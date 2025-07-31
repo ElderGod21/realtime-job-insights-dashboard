@@ -131,5 +131,4 @@ def scrape_internshala_jobs(max_pages=50):
     print("📁 Saved to data/internshala_jobs.csv")
 
 if __name__ == "__main__":
-    scrape_internshala_jobs(50)  # You can change this number as needed
-
+    scrape_internshala_jobs(190)  # You can change this number as needed

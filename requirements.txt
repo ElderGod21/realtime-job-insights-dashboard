@@ -1,0 +1,12 @@
+# requirements.txt
+
+streamlit
+pandas
+plotly-express
+PyPDF2
+numpy
+requests
+scikit-learn
+# Add your scraping libraries below:
+beautifulsoup4
+# Add any other libraries your scraper needs (e.g., lxml)

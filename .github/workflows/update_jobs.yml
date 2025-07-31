@@ -1,0 +1,45 @@
+# .github/workflows/update_jobs.yml
+
+name: Daily Job Scraping
+
+on:
+  schedule:
+    # ----------------------------------------------------
+    # 1. THE SCHEDULE
+    - cron: '0 0 * * *'  #<-- You can change the update time here
+    # ----------------------------------------------------
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          # ----------------------------------------------------
+          # 2. THE PYTHON VERSION
+          python-version: '3.12.10' #<-- Match this to your project's version
+          # ----------------------------------------------------
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Python scraper
+        run: python scrape_jobs.py
+
+      - name: Commit and push after a change or csv update
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # ----------------------------------------------------
+          # 3. THE PATH TO YOUR DATA FILE
+          git add data/internshala_jobs.csv #<-- This must match your scraper's output
+          # ----------------------------------------------------
+          git diff --quiet --staged || git commit -m "Automated daily job update"
+          git push

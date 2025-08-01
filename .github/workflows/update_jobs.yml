@@ -13,6 +13,14 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+
+    # --- THIS IS THE FIX ---
+    # Grant write permissions to the GITHUB_TOKEN for this job.
+    # This allows the job to push changes back to your repository.
+    permissions:
+      contents: write
+    # ---------------------
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -29,7 +37,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+          
       - name: Run Python scraper
         run: python scrape_jobs.py
 

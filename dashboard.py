@@ -1623,7 +1623,569 @@
 #      """, unsafe_allow_html=True)
 
 
-## Design 10
+## Design 10 -- Slow original version
+
+# import pandas as pd
+# import streamlit as st
+# import plotly.express as px
+# import PyPDF2
+# import re
+# from collections import Counter
+# import numpy as np
+
+# # --- 1. ROBUSTLY IMPORT SKLEARN AND SET UP AI ENGINE ---
+# SKLEARN_INSTALLED = False
+# try:
+#     from sklearn.feature_extraction.text import TfidfVectorizer
+#     from sklearn.metrics.pairwise import cosine_similarity
+#     SKLEARN_INSTALLED = True
+# except ImportError:
+#     pass
+
+# # --- 2. PAGE CONFIG AND INITIALIZATION ---
+# st.set_page_config(layout="wide")
+# st.markdown("<h1 style='text-align: center;'>Career Insights Dashboard</h1>", unsafe_allow_html=True)
+
+
+# # --- 3. OPTIMIZED DATA LOADING & CLEANING ---
+# @st.cache_data
+# def load_data():
+#     """Loads, cleans, de-duplicates, and reshapes the job data for optimal performance."""
+#     try:
+#         df = pd.read_csv("data/internshala_jobs.csv", index_col=False)
+#         df.drop_duplicates(subset=['Job Title', 'Company', 'Location', 'Skills'], keep='first', inplace=True)
+#         df.dropna(subset=['Job Title', 'Company', 'Location', 'Salary', 'Experience', 'Posted'], inplace=True)
+#         df['Skills'] = df['Skills'].astype(str)
+#         df.reset_index(drop=True, inplace=True)
+#         df['Skills_list'] = df['Skills'].apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
+#         df['Skills_str'] = df['Skills_list'].apply(lambda x: ' '.join(x))
+#         df_exploded = df.explode('Skills_list').rename(columns={'Skills_list': 'Skill'})
+#         return df, df_exploded
+#     except FileNotFoundError:
+#         st.error("Error: 'data/internshala_jobs.csv' not found. Please ensure the CSV is in the data/ directory.")
+#         return pd.DataFrame(), pd.DataFrame()
+
+# df, df_exploded = load_data()
+
+# if df.empty:
+#     st.stop()
+
+
+# # --- 4. AI RECOMMENDATION ENGINE SETUP ---
+# if SKLEARN_INSTALLED:
+#     @st.cache_resource
+#     def setup_ai_engine(dataframe):
+#         tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+#         tfidf_matrix = tfidf_vectorizer.fit_transform(dataframe['Skills_str'])
+#         return tfidf_vectorizer, tfidf_matrix
+    
+#     tfidf_vectorizer, tfidf_matrix = setup_ai_engine(df)
+
+
+# # --- 5. STATE MANAGEMENT SETUP ---
+# filter_keys = ['skills', 'titles', 'companies', 'locations', 'experience']
+# for key in filter_keys:
+#     if key not in st.session_state:
+#         st.session_state[key] = []
+# if 'sort_by_company' not in st.session_state:
+#     st.session_state.sort_by_company = 'none'
+
+
+# # --- 6. RESUME PROCESSING LOGIC ---
+# st.subheader("📤 Upload Your Resume to Auto-Filter Skills")
+# uploaded_file = st.file_uploader(
+#     "Upload your resume to power the AI skill recommender and auto-apply filters below.",
+#     type=["pdf"],
+#     label_visibility="collapsed"
+# )
+
+# if uploaded_file:
+#     current_file_identifier = f"{uploaded_file.name}-{uploaded_file.size}"
+#     if current_file_identifier != st.session_state.get('processed_file_identifier'):
+#         try:
+#             pdf_reader = PyPDF2.PdfReader(uploaded_file)
+#             st.session_state.resume_text = "".join(page.extract_text() or "" for page in pdf_reader.pages)
+#             resume_text_lower = st.session_state.resume_text.lower()
+#             all_skills_list = sorted(list(set(skill for sl in df['Skills_list'] for skill in sl)))
+#             found_skills = [skill for skill in all_skills_list if re.search(r'\b' + re.escape(skill.lower()) + r'\b', resume_text_lower)]
+#             st.session_state.skills = sorted(list(set(found_skills)))
+#             if st.session_state.skills:
+#                 auto_skills_lower = {s.lower() for s in st.session_state.skills}
+#                 matched_rows = df[df['Skills_list'].apply(lambda sl: any(s.lower() in auto_skills_lower for s in sl))]
+#                 st.session_state.titles = sorted(matched_rows['Job Title'].unique().tolist()) if not matched_rows.empty else []
+#             else:
+#                 st.session_state.titles = []
+#             st.session_state.processed_file_identifier = current_file_identifier
+#             st.rerun()
+#         except Exception as e:
+#             st.error(f"Error processing PDF file: {e}")
+#             st.session_state.processed_file_identifier = None
+
+
+# # --- 7. SIDEBAR FILTERS ---
+# with st.sidebar:
+#     st.subheader("🔍 Filters")
+#     st.multiselect("Select Skills", sorted(list(set(skill for sl in df['Skills_list'] for skill in sl))), key='skills')
+#     st.multiselect("Select Job Titles", sorted(df["Job Title"].dropna().unique()), key='titles')
+#     st.multiselect("Search by Company", sorted(df["Company"].dropna().unique()), key='companies')
+#     st.multiselect("Select Locations", sorted(df["Location"].dropna().unique()), key='locations')
+#     all_experiences = sorted(df['Experience'].dropna().unique(), key=lambda x: int(re.search(r'\d+', x).group()) if re.search(r'\d+', x) else 0)
+#     st.multiselect("Filter by Experience", all_experiences, key='experience')
+
+
+# # --- 8. APPLY FILTERS TO DATAFRAME (OPTIMIZED) ---
+# filtered_df = df.copy()
+
+# if st.session_state.skills:
+#     matching_indices = df_exploded[df_exploded['Skill'].isin(st.session_state.skills)].index.unique()
+#     filtered_df = df.loc[matching_indices]
+# if st.session_state.titles:
+#     filtered_df = filtered_df[filtered_df['Job Title'].isin(st.session_state.titles)]
+# if st.session_state.companies:
+#     filtered_df = filtered_df[filtered_df['Company'].isin(st.session_state.companies)]
+# if st.session_state.locations:
+#     filtered_df = filtered_df[filtered_df['Location'].isin(st.session_state.locations)]
+# if st.session_state.experience:
+#     filtered_df = filtered_df[filtered_df['Experience'].isin(st.session_state.experience)]
+
+
+# # --- 9. CREATE TABBED LAYOUT ---
+# tab_board, tab_analytics, tab_resume = st.tabs(["📄 Job Board", "📊 Dashboard Analytics", "🤖 AI Resume Insights"])
+
+# with tab_board:
+#     st.markdown(f"### 🧾 Showing {len(filtered_df)} job(s)")
+#     display_df = filtered_df.copy()
+#     display_df['Skills'] = display_df['Skills_list'].apply(lambda x: ', '.join(x))
+    
+#     col1, col2 = st.columns([0.2, 0.8]) # Adjusted column ratio for better button spacing
+    
+#     with col1:
+#         csv = display_df.to_csv(index=False).encode('utf-8')
+#         st.download_button("📥 Download as CSV", csv, "filtered_jobs.csv", "text/csv")
+    
+#     with col2:
+#         sort_clicked = st.button("↕️ Sort by Company")
+#         if sort_clicked:
+#             st.session_state.sort_by_company = {'none': 'asc', 'asc': 'desc', 'desc': 'none'}[st.session_state.sort_by_company]
+
+#     if st.session_state.sort_by_company == 'asc':
+#         display_df = display_df.sort_values(by='Company', ascending=True)
+#         st.info("Sorted by Company: A-Z")
+#     elif st.session_state.sort_by_company == 'desc':
+#         display_df = display_df.sort_values(by='Company', ascending=False)
+#         st.info("Sorted by Company: Z-A")
+
+#     def make_clickable_link(link): return f'<a href="{link}" target="_blank">View</a>'
+#     display_df['Link'] = display_df['Link'].apply(make_clickable_link)
+#     table_df = display_df.drop(columns=['Skills_list', 'Skills_str'], errors='ignore')
+#     table_html = table_df.reset_index(drop=True).to_html(escape=False, index=False)
+#     st.markdown(f'<div class="scrollable-table">{table_html}</div>', unsafe_allow_html=True)
+
+
+# with tab_analytics:
+#     st.subheader("Key Metrics for Your Filtered View")
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         pie_df = pd.DataFrame({'Category': ['Matching Jobs', 'Other Jobs'], 'Count': [len(filtered_df), len(df) - len(filtered_df)]})
+#         pie_chart = px.pie(pie_df, names='Category', values='Count', title='Jobs Matching Your Filters', hole=0.3)
+#         st.plotly_chart(pie_chart, use_container_width=True)
+#     with col2:
+#         source_df = filtered_df if not filtered_df.empty else df
+#         title_suffix = "(in Filtered Jobs)" if not filtered_df.empty else "(Overall)"
+#         skill_counts = Counter(skill for skills_list in source_df['Skills_list'] for skill in skills_list)
+#         top_10_skills = skill_counts.most_common(10)
+#         if top_10_skills:
+#             skill_bar_df = pd.DataFrame(top_10_skills, columns=['Skills', 'Job Count'])
+#             bar_chart = px.bar(skill_bar_df, x='Skills', y='Job Count', title=f'Top 10 Skills in Demand {title_suffix}')
+#             st.plotly_chart(bar_chart, use_container_width=True)
+#         else:
+#             st.info("No skills data to display for the current selection.")
+
+# with tab_resume:
+#     st.subheader("🤖 AI-Powered Skill Analysis")
+
+#     if not SKLEARN_INSTALLED:
+#         st.warning("The AI Recommendation Engine is disabled because `scikit-learn` is not installed.")
+#         st.info("To enable this feature, please stop the app, run `pip install scikit-learn`, and restart.")
+#     elif not st.session_state.get('skills'):
+#         st.info("Upload your resume or select skills in the sidebar to generate personalized recommendations.")
+#     else:
+#         user_skills_str = ' '.join(st.session_state.skills)
+#         user_vector = tfidf_vectorizer.transform([user_skills_str])
+#         cosine_similarities = cosine_similarity(user_vector, tfidf_matrix).flatten()
+#         num_top_jobs = max(5, int(len(df) * 0.1))
+#         top_job_indices = cosine_similarities.argsort()[-num_top_jobs:][::-1]
+#         top_jobs_df = df.iloc[top_job_indices]
+#         user_skills_set = set(s.lower() for s in st.session_state.skills)
+#         skills_from_top_jobs = [skill.lower() for sublist in top_jobs_df['Skills_list'] for skill in sublist]
+#         skill_counts_in_top_jobs = Counter(skills_from_top_jobs)
+#         missing_skills = {skill for skill in skills_from_top_jobs if skill not in user_skills_set}
+#         ranked_missing_skills = sorted(missing_skills, key=lambda skill: skill_counts_in_top_jobs[skill], reverse=True)
+
+#         st.markdown("""<div class="ai-intro">
+#         Based on your resume, here is a breakdown of your current strengths and a tailored plan to enhance your profile for the job market.
+#         </div>""", unsafe_allow_html=True)
+        
+#         core_skills_pills = "".join([f'<span class="skill-pill-user">{skill}</span>' for skill in st.session_state.skills])
+#         rec_skills_pills = ("".join([f'<span class="skill-pill-rec">{skill.title()}</span>' for skill in ranked_missing_skills[:10]])
+#                             if ranked_missing_skills 
+#                             else '<span class="skill-pill-success">Excellent! You have all the top skills for jobs matching your profile.</span>')
+        
+#         cards_html = f"""<div class="cards-wrapper">
+#             <div class="skill-card-container"><h5>✅ Your Core Skills</h5><div class="pills-container">{core_skills_pills}</div></div>
+#             <div class="skill-card-container"><h5>🎯 AI Recommended Skills to Learn</h5><div class="pills-container">{rec_skills_pills}</div></div>
+#         </div>"""
+#         st.markdown(cards_html, unsafe_allow_html=True)
+
+#         st.divider()
+#         st.markdown("<h5>✨ Top Job Titles For You</h5>", unsafe_allow_html=True)
+#         st.markdown("Your skills are a strong fit for roles like these:")
+#         top_titles = top_jobs_df['Job Title'].unique()[:5]
+#         top_titles_html = "".join([f'<span class="job-title-pill">{title}</span>' for title in top_titles])
+#         st.markdown(f'<div class="pills-container" style="margin-top: 10px;">{top_titles_html}</div>', unsafe_allow_html=True)
+
+
+# # --- 10. INJECT CSS ---
+# st.markdown("""
+#     <style>
+#     /* --- GENERAL STYLES --- */
+#     .stDownloadButton>button { 
+#         background-color: #83c9ff; 
+#         color: white; 
+#         border: none; 
+#         border-radius: 8px; 
+#         padding: 0.5em 1em; 
+#     }
+#     .stDownloadButton>button:hover { 
+#         background-color: #0043AB; 
+#         color: white; 
+#     }
+    
+#     /* --- NEW: STYLE FOR THE SORT BUTTON TO MATCH DOWNLOAD BUTTON --- */
+#     div[data-testid="stButton"] > button {
+#         background-color: #83c9ff;
+#         color: white;
+#         border: none;
+#         border-radius: 8px;
+#         padding: 0.5em 1em;
+#     }
+#     div[data-testid="stButton"] > button:hover {
+#         background-color: #0043AB;
+#         color: white;
+#         border: none; /* Ensure border doesn't reappear on hover */
+#     }
+#     div[data-testid="stButton"] > button:focus {
+#         background-color: #0043AB;
+#         color: white;
+#         box-shadow: none; /* Optional: remove focus ring if desired */
+#     }
+
+#     span[data-baseweb="tag"] { background-color: #83c9ff !important; color: white !important; border-radius: 6px !important; }
+#     span[data-baseweb="tag"]:hover { background-color: #0043AB !important; }
+#     span[data-baseweb="tag"] svg { fill: white !important; }
+#     div[data-testid="stMultiSelect"] div[data-baseweb="base-input"]:focus-within { border-color: #0043AB !important; box-shadow: 0 0 0 2px #0043AB !important; }
+#     button[data-testid="stTab"][aria-selected="true"] { color: #0043AB; border-bottom: 2px solid #0043AB; }
+#     button[data-testid="stTab"]:hover { color: #0043AB; }
+
+#     /* --- TABLE STYLES --- */
+#     .scrollable-table { max-height: 600px; overflow-y: auto; }
+#     table { width : 100%; border-collapse: collapse; table-layout: fixed; }
+#     th { position: sticky; top: 0; background-color: #0d1117 !important; color: white !important; text-align: left !important; padding: 12px; word-wrap: break-word; z-index: 1;}
+#     td { padding: 8px 12px; border-bottom: 1px solid #ddd; word-wrap: break-word; }
+#     tr:hover { background-color: #1a1a2e; }
+#     th:nth-child(1), td:nth-child(1) { width: 15%; } th:nth-child(2), td:nth-child(2) { width: 15%; } th:nth-child(3), td:nth-child(3) { width: 25%; } th:nth-child(4), td:nth-child(4) { width: 10%; }
+#     th:nth-child(5), td:nth-child(5) { width: 10%; } th:nth-child(6), td:nth-child(6) { width: 10%; } th:nth-child(7), td:nth-child(7) { width: 10%; } th:nth-child(8), td:nth-child(8) { width: 5%; }
+
+#     /* --- AI INSIGHTS TAB STYLES --- */
+#     .ai-intro { font-size: 1.1em; text-align: center; color: #b0b0b0; margin-bottom: 20px; }
+#     .cards-wrapper { display: flex; gap: 20px; margin-top: 20px; }
+#     .skill-card-container { flex: 1; background-color: #0f1116; border: 1px solid #30363d; border-radius: 12px; padding: 20px; min-height: 150px; }
+#     .skill-card-container h5 { margin-top: 0; margin-bottom: 15px; font-size: 1.1em; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+#     .pills-container { display: flex; flex-wrap: wrap; gap: 8px; }
+#     .skill-pill-user { display: inline-block; padding: 6px 14px; background-color: #238636; color: white; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .skill-pill-rec { display: inline-block; padding: 6px 14px; background-color: #fca311; color: #14213d; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .job-title-pill { display: inline-block; padding: 6px 14px; background-color: #1c4b82; color: #ffffff; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .skill-pill-success { display: inline-block; padding: 6px 14px; background-color: #1c4b82; color: white; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     </style>
+#      """, unsafe_allow_html=True)
+
+# dashboard.py (Optimized Version)
+
+# import pandas as pd
+# import streamlit as st
+# import plotly.express as px
+# import PyPDF2
+# import re
+# from collections import Counter
+# import numpy as np
+# from pathlib import Path
+
+# # --- 1. ROBUSTLY IMPORT SKLEARN AND SET UP AI ENGINE ---
+# SKLEARN_INSTALLED = False
+# try:
+#     from sklearn.feature_extraction.text import TfidfVectorizer
+#     from sklearn.metrics.pairwise import cosine_similarity
+#     SKLEARN_INSTALLED = True
+# except ImportError:
+#     pass
+
+# # --- 2. PAGE CONFIG AND INITIALIZATION ---
+# st.set_page_config(layout="wide")
+# st.markdown("<h1 style='text-align: center;'>Career Insights Dashboard</h1>", unsafe_allow_html=True)
+
+
+# # --- 3. OPTIMIZED DATA LOADING & CLEANING ---
+# @st.cache_data
+# def load_data():
+#     """
+#     Loads data from Parquet for speed, falling back to CSV if needed.
+#     Cleans, de-duplicates, and optimizes data types for performance.
+#     """
+#     parquet_path = Path("data/internshala_jobs.parquet")
+#     csv_path = Path("data/internshala_jobs.csv")
+
+#     if parquet_path.exists():
+#         df = pd.read_parquet(parquet_path)
+#     elif csv_path.exists():
+#         df = pd.read_csv(csv_path)
+#         # --- OPTIMIZATION: Save as Parquet for future fast loads ---
+#         df.to_parquet(parquet_path)
+#     else:
+#         st.error("Error: 'data/internshala_jobs.csv' not found. Please ensure the CSV is in the data/ directory.")
+#         return pd.DataFrame(), pd.DataFrame()
+
+#     # --- Data Cleaning and Optimization ---
+#     df.drop_duplicates(subset=['Job Title', 'Company', 'Location', 'Skills'], keep='first', inplace=True)
+#     df.dropna(subset=['Job Title', 'Company', 'Location', 'Salary', 'Experience', 'Posted'], inplace=True)
+#     df['Skills'] = df['Skills'].astype(str)
+
+#     # --- OPTIMIZATION: Convert to memory-saving categorical types ---
+#     for col in ['Company', 'Location', 'Experience']:
+#         if col in df.columns:
+#             df[col] = df[col].astype('category')
+
+#     df.reset_index(drop=True, inplace=True)
+
+#     # Create list and string versions of skills for different operations
+#     df['Skills_list'] = df['Skills'].apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
+#     df['Skills_str'] = df['Skills_list'].apply(lambda x: ' '.join(x))
+
+#     # --- OPTIMIZATION: Pre-explode the DataFrame for ultra-fast skill filtering ---
+#     df_exploded = df.explode('Skills_list').rename(columns={'Skills_list': 'Skill'})
+    
+#     return df, df_exploded
+
+# df, df_exploded = load_data()
+
+# if df.empty:
+#     st.stop()
+
+
+# # --- 4. AI RECOMMENDATION ENGINE SETUP ---
+# if SKLEARN_INSTALLED:
+#     @st.cache_resource
+#     def setup_ai_engine(dataframe):
+#         tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+#         tfidf_matrix = tfidf_vectorizer.fit_transform(dataframe['Skills_str'])
+#         return tfidf_vectorizer, tfidf_matrix
+    
+#     tfidf_vectorizer, tfidf_matrix = setup_ai_engine(df)
+
+
+# # --- 5. STATE MANAGEMENT SETUP ---
+# filter_keys = ['skills', 'titles', 'companies', 'locations', 'experience']
+# for key in filter_keys:
+#     if key not in st.session_state:
+#         st.session_state[key] = []
+
+
+# # --- 6. RESUME PROCESSING LOGIC ---
+# st.subheader("📤 Upload Your Resume to Auto-Filter Skills")
+# uploaded_file = st.file_uploader(
+#     "Upload your resume to power the AI skill recommender and auto-apply filters below.",
+#     type=["pdf"],
+#     label_visibility="collapsed"
+# )
+
+# if uploaded_file:
+#     current_file_identifier = f"{uploaded_file.name}-{uploaded_file.size}"
+#     if current_file_identifier != st.session_state.get('processed_file_identifier'):
+#         try:
+#             pdf_reader = PyPDF2.PdfReader(uploaded_file)
+#             st.session_state.resume_text = "".join(page.extract_text() or "" for page in pdf_reader.pages)
+#             resume_text_lower = st.session_state.resume_text.lower()
+#             all_skills_list = sorted(list(set(skill for sl in df['Skills_list'] for skill in sl)))
+#             found_skills = [skill for skill in all_skills_list if re.search(r'\b' + re.escape(skill.lower()) + r'\b', resume_text_lower)]
+#             st.session_state.skills = sorted(list(set(found_skills)))
+#             if st.session_state.skills:
+#                 auto_skills_lower = {s.lower() for s in st.session_state.skills}
+#                 # Use the fast, pre-exploded df for this check
+#                 matching_indices = df_exploded[df_exploded['Skill'].str.lower().isin(auto_skills_lower)].index.unique()
+#                 matched_rows = df.loc[matching_indices]
+#                 st.session_state.titles = sorted(matched_rows['Job Title'].unique().tolist()) if not matched_rows.empty else []
+#             else:
+#                 st.session_state.titles = []
+#             st.session_state.processed_file_identifier = current_file_identifier
+#             st.rerun()
+#         except Exception as e:
+#             st.error(f"Error processing PDF file: {e}")
+#             st.session_state.processed_file_identifier = None
+
+
+# # --- 7. SIDEBAR FILTERS ---
+# with st.sidebar:
+#     st.subheader("🔍 Filters")
+#     st.multiselect("Select Skills", sorted(list(set(skill for sl in df['Skills_list'] for skill in sl))), key='skills')
+#     st.multiselect("Select Job Titles", sorted(df["Job Title"].dropna().unique()), key='titles')
+#     st.multiselect("Search by Company", df["Company"].cat.categories, key='companies') # Use categories for speed
+#     st.multiselect("Select Locations", df["Location"].cat.categories, key='locations') # Use categories for speed
+#     all_experiences = sorted(df['Experience'].cat.categories, key=lambda x: int(re.search(r'\d+', x).group()) if re.search(r'\d+', x) else 0)
+#     st.multiselect("Filter by Experience", all_experiences, key='experience')
+
+    
+# # --- 8. APPLY FILTERS TO DATAFRAME (OPTIMIZED) ---
+# # Start with a boolean mask of all True
+# is_filtered = pd.Series(True, index=df.index)
+
+# # Fast skill filtering using the exploded DataFrame
+# if st.session_state.skills:
+#     matching_indices = df_exploded[df_exploded['Skill'].isin(st.session_state.skills)].index.unique()
+#     is_filtered &= df.index.isin(matching_indices)
+
+# if st.session_state.titles:
+#     is_filtered &= df['Job Title'].isin(st.session_state.titles)
+# if st.session_state.companies:
+#     is_filtered &= df['Company'].isin(st.session_state.companies)
+# if st.session_state.locations:
+#     is_filtered &= df['Location'].isin(st.session_state.locations)
+# if st.session_state.experience:
+#     is_filtered &= df['Experience'].isin(st.session_state.experience)
+
+# # Apply the combined filter once at the end
+# filtered_df = df[is_filtered]
+
+
+# # --- 9. CREATE TABBED LAYOUT ---
+# tab_board, tab_analytics, tab_resume = st.tabs(["📄 Job Board", "📊 Dashboard Analytics", "🤖 AI Resume Insights"])
+
+# with tab_board:
+#     st.markdown(f"### 🧾 Showing {len(filtered_df)} job(s)")
+    
+#     # Prepare DataFrame for display
+#     display_df = filtered_df.copy()
+#     display_df['Skills'] = display_df['Skills_list'].apply(lambda x: ', '.join(x))
+    
+#     # Drop helper columns before displaying
+#     table_df = display_df.drop(columns=['Skills_list', 'Skills_str'], errors='ignore')
+
+#     csv = table_df.to_csv(index=False).encode('utf-8')
+#     st.download_button("📥 Download as CSV", csv, "filtered_jobs.csv", "text/csv")
+    
+#     # --- OPTIMIZATION: Use st.dataframe for high-performance rendering ---
+#     st.dataframe(
+#         table_df,
+#         height=600,
+#         use_container_width=True,
+#         # Configure columns for better display, including clickable links
+#         column_config={
+#             "Job Title": st.column_config.TextColumn(width="medium"),
+#             "Company": st.column_config.TextColumn(width="medium"),
+#             "Skills": st.column_config.TextColumn(width="large"),
+#             "Link": st.column_config.LinkColumn("Job Link", display_text="View Job ↗"),
+#         },
+#         hide_index=True,
+#     )
+
+# with tab_analytics:
+#     st.subheader("Key Metrics for Your Filtered View")
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         pie_df = pd.DataFrame({'Category': ['Matching Jobs', 'Other Jobs'], 'Count': [len(filtered_df), len(df) - len(filtered_df)]})
+#         pie_chart = px.pie(pie_df, names='Category', values='Count', title='Jobs Matching Your Filters', hole=0.3)
+#         st.plotly_chart(pie_chart, use_container_width=True)
+#     with col2:
+#         source_df = filtered_df if not filtered_df.empty else df
+#         title_suffix = "(in Filtered Jobs)" if not filtered_df.empty else "(Overall)"
+        
+#         # Use the pre-exploded DataFrame for fast skill counting
+#         source_exploded = df_exploded.loc[source_df.index]
+#         skill_counts = source_exploded['Skill'].value_counts().nlargest(10)
+
+#         if not skill_counts.empty:
+#             skill_bar_df = pd.DataFrame(skill_counts).reset_index()
+#             bar_chart = px.bar(skill_bar_df, x='Skill', y='count', title=f'Top 10 Skills in Demand {title_suffix}')
+#             st.plotly_chart(bar_chart, use_container_width=True)
+#         else:
+#             st.info("No skills data to display for the current selection.")
+
+# with tab_resume:
+#     st.subheader("🤖 AI-Powered Skill Analysis")
+
+#     if not SKLEARN_INSTALLED:
+#         st.warning("The AI Recommendation Engine is disabled because `scikit-learn` is not installed.")
+#         st.info("To enable this feature, please stop the app, run the command below in your terminal, and then restart the app:")
+#         st.code("pip install scikit-learn", language="bash")
+#     elif not st.session_state.get('skills'):
+#         st.info("Upload your resume or select skills in the sidebar to generate personalized recommendations.")
+#     else:
+#         # AI Logic to find recommendations
+#         user_skills_str = ' '.join(st.session_state.skills)
+#         user_vector = tfidf_vectorizer.transform([user_skills_str])
+#         cosine_similarities = cosine_similarity(user_vector, tfidf_matrix).flatten()
+#         num_top_jobs = max(5, int(len(df) * 0.1))
+#         top_job_indices = cosine_similarities.argsort()[-num_top_jobs:][::-1]
+#         top_jobs_df = df.iloc[top_job_indices]
+#         user_skills_set = set(s.lower() for s in st.session_state.skills)
+#         skills_from_top_jobs = [skill.lower() for sublist in top_jobs_df['Skills_list'] for skill in sublist]
+#         skill_counts_in_top_jobs = Counter(skills_from_top_jobs)
+#         missing_skills = {skill for skill in skills_from_top_jobs if skill not in user_skills_set}
+#         ranked_missing_skills = sorted(missing_skills, key=lambda skill: skill_counts_in_top_jobs[skill], reverse=True)
+
+#         st.markdown(
+#             "<div class='ai-intro'>Based on your resume, here is a breakdown of your strengths and a tailored plan to enhance your profile.</div>",
+#             unsafe_allow_html=True
+#         )
+        
+#         core_skills_pills = "".join([f'<span class="skill-pill-user">{skill}</span>' for skill in st.session_state.skills])
+#         rec_skills_pills = ("".join([f'<span class="skill-pill-rec">{skill.title()}</span>' for skill in ranked_missing_skills[:10]])
+#                             if ranked_missing_skills 
+#                             else '<span class="skill-pill-success">Excellent! You have all the top skills for jobs matching your profile.</span>')
+        
+#         cards_html = f"""<div class="cards-wrapper">
+#             <div class="skill-card-container"><h5>✅ Your Core Skills</h5><div class="pills-container">{core_skills_pills}</div></div>
+#             <div class="skill-card-container"><h5>🎯 AI Recommended Skills</h5><div class="pills-container">{rec_skills_pills}</div></div>
+#         </div>"""
+#         st.markdown(cards_html, unsafe_allow_html=True)
+
+#         st.divider()
+#         st.markdown("<h5>✨ Top Job Titles For You</h5>", unsafe_allow_html=True)
+#         top_titles = top_jobs_df['Job Title'].unique()[:5]
+#         top_titles_html = "".join([f'<span class="job-title-pill">{title}</span>' for title in top_titles])
+#         st.markdown(f'<div class="pills-container" style="margin-top: 10px;">{top_titles_html}</div>', unsafe_allow_html=True)
+
+
+# # --- 10. INJECT CSS ---
+# st.markdown("""
+#     <style>
+#     .stDownloadButton>button { background-color: #83c9ff; color: white; border: none; border-radius: 8px; padding: 0.5em 1em; }
+#     .stDownloadButton>button:hover { background-color: #0043AB; color: white; }
+#     span[data-baseweb="tag"] { background-color: #83c9ff !important; color: white !important; border-radius: 6px !important; }
+#     .ai-intro { font-size: 1.1em; text-align: center; color: #b0b0b0; margin-bottom: 20px; }
+#     .cards-wrapper { display: flex; gap: 20px; margin-top: 20px; }
+#     .skill-card-container { flex: 1; background-color: #0f1116; border: 1px solid #30363d; border-radius: 12px; padding: 20px; min-height: 150px; }
+#     .skill-card-container h5 { margin-top: 0; margin-bottom: 15px; font-size: 1.1em; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+#     .pills-container { display: flex; flex-wrap: wrap; gap: 8px; }
+#     .skill-pill-user { display: inline-block; padding: 6px 14px; background-color: #238636; color: white; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .skill-pill-rec { display: inline-block; padding: 6px 14px; background-color: #fca311; color: #14213d; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .job-title-pill { display: inline-block; padding: 6px 14px; background-color: #1c4b82; color: #ffffff; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     .skill-pill-success { display: inline-block; padding: 6px 14px; background-color: #1c4b82; color: white; border-radius: 16px; font-weight: 500; font-size: 0.9em; }
+#     </style>
+#      """, unsafe_allow_html=True)
+
+
+
+
+# dashboard.py (With Company Sorting Button)
 
 import pandas as pd
 import streamlit as st
@@ -1632,6 +2194,7 @@ import PyPDF2
 import re
 from collections import Counter
 import numpy as np
+from pathlib import Path
 
 # --- 1. ROBUSTLY IMPORT SKLEARN AND SET UP AI ENGINE ---
 SKLEARN_INSTALLED = False
@@ -1650,20 +2213,40 @@ st.markdown("<h1 style='text-align: center;'>Career Insights Dashboard</h1>", un
 # --- 3. OPTIMIZED DATA LOADING & CLEANING ---
 @st.cache_data
 def load_data():
-    """Loads, cleans, de-duplicates, and reshapes the job data for optimal performance."""
-    try:
-        df = pd.read_csv("data/internshala_jobs.csv", index_col=False)
-        df.drop_duplicates(subset=['Job Title', 'Company', 'Location', 'Skills'], keep='first', inplace=True)
-        df.dropna(subset=['Job Title', 'Company', 'Location', 'Salary', 'Experience', 'Posted'], inplace=True)
-        df['Skills'] = df['Skills'].astype(str)
-        df.reset_index(drop=True, inplace=True)
-        df['Skills_list'] = df['Skills'].apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
-        df['Skills_str'] = df['Skills_list'].apply(lambda x: ' '.join(x))
-        df_exploded = df.explode('Skills_list').rename(columns={'Skills_list': 'Skill'})
-        return df, df_exploded
-    except FileNotFoundError:
+    """
+    Loads data from Parquet for speed, falling back to CSV if needed.
+    Cleans, de-duplicates, and optimizes data types for performance.
+    """
+    parquet_path = Path("data/internshala_jobs.parquet")
+    csv_path = Path("data/internshala_jobs.csv")
+
+    if parquet_path.exists():
+        df = pd.read_parquet(parquet_path)
+    elif csv_path.exists():
+        df = pd.read_csv(csv_path)
+        df.to_parquet(parquet_path)
+    else:
         st.error("Error: 'data/internshala_jobs.csv' not found. Please ensure the CSV is in the data/ directory.")
         return pd.DataFrame(), pd.DataFrame()
+
+    # --- Data Cleaning and Optimization ---
+    df.drop_duplicates(subset=['Job Title', 'Company', 'Location', 'Skills'], keep='first', inplace=True)
+    # This now correctly includes the 'Posted' column from your final scraper
+    df.dropna(subset=['Job Title', 'Company', 'Location', 'Salary', 'Experience', 'Posted'], inplace=True)
+    df['Skills'] = df['Skills'].astype(str)
+
+    for col in ['Company', 'Location', 'Experience']:
+        if col in df.columns:
+            df[col] = df[col].astype('category')
+
+    df.reset_index(drop=True, inplace=True)
+
+    df['Skills_list'] = df['Skills'].apply(lambda x: [s.strip() for s in x.split(',') if s.strip()])
+    df['Skills_str'] = df['Skills_list'].apply(lambda x: ' '.join(x))
+
+    df_exploded = df.explode('Skills_list').rename(columns={'Skills_list': 'Skill'})
+    
+    return df, df_exploded
 
 df, df_exploded = load_data()
 
@@ -1687,12 +2270,15 @@ filter_keys = ['skills', 'titles', 'companies', 'locations', 'experience']
 for key in filter_keys:
     if key not in st.session_state:
         st.session_state[key] = []
+
+# --- Initialize the session state for our sort button ---
 if 'sort_by_company' not in st.session_state:
-    st.session_state.sort_by_company = 'none'
+    st.session_state.sort_by_company = 'none' # Initial state is unsorted
 
 
 # --- 6. RESUME PROCESSING LOGIC ---
 st.subheader("📤 Upload Your Resume to Auto-Filter Skills")
+
 uploaded_file = st.file_uploader(
     "Upload your resume to power the AI skill recommender and auto-apply filters below.",
     type=["pdf"],
@@ -1711,7 +2297,8 @@ if uploaded_file:
             st.session_state.skills = sorted(list(set(found_skills)))
             if st.session_state.skills:
                 auto_skills_lower = {s.lower() for s in st.session_state.skills}
-                matched_rows = df[df['Skills_list'].apply(lambda sl: any(s.lower() in auto_skills_lower for s in sl))]
+                matching_indices = df_exploded[df_exploded['Skill'].str.lower().isin(auto_skills_lower)].index.unique()
+                matched_rows = df.loc[matching_indices]
                 st.session_state.titles = sorted(matched_rows['Job Title'].unique().tolist()) if not matched_rows.empty else []
             else:
                 st.session_state.titles = []
@@ -1725,28 +2312,29 @@ if uploaded_file:
 # --- 7. SIDEBAR FILTERS ---
 with st.sidebar:
     st.subheader("🔍 Filters")
+  
     st.multiselect("Select Skills", sorted(list(set(skill for sl in df['Skills_list'] for skill in sl))), key='skills')
     st.multiselect("Select Job Titles", sorted(df["Job Title"].dropna().unique()), key='titles')
-    st.multiselect("Search by Company", sorted(df["Company"].dropna().unique()), key='companies')
-    st.multiselect("Select Locations", sorted(df["Location"].dropna().unique()), key='locations')
-    all_experiences = sorted(df['Experience'].dropna().unique(), key=lambda x: int(re.search(r'\d+', x).group()) if re.search(r'\d+', x) else 0)
+    st.multiselect("Search by Company", df["Company"].cat.categories, key='companies')
+    st.multiselect("Select Locations", df["Location"].cat.categories, key='locations')
+    all_experiences = sorted(df['Experience'].cat.categories, key=lambda x: int(re.search(r'\d+', x).group()) if re.search(r'\d+', x) else 0)
     st.multiselect("Filter by Experience", all_experiences, key='experience')
 
-
+    
 # --- 8. APPLY FILTERS TO DATAFRAME (OPTIMIZED) ---
-filtered_df = df.copy()
-
+is_filtered = pd.Series(True, index=df.index)
 if st.session_state.skills:
     matching_indices = df_exploded[df_exploded['Skill'].isin(st.session_state.skills)].index.unique()
-    filtered_df = df.loc[matching_indices]
+    is_filtered &= df.index.isin(matching_indices)
 if st.session_state.titles:
-    filtered_df = filtered_df[filtered_df['Job Title'].isin(st.session_state.titles)]
+    is_filtered &= df['Job Title'].isin(st.session_state.titles)
 if st.session_state.companies:
-    filtered_df = filtered_df[filtered_df['Company'].isin(st.session_state.companies)]
+    is_filtered &= df['Company'].isin(st.session_state.companies)
 if st.session_state.locations:
-    filtered_df = filtered_df[filtered_df['Location'].isin(st.session_state.locations)]
+    is_filtered &= df['Location'].isin(st.session_state.locations)
 if st.session_state.experience:
-    filtered_df = filtered_df[filtered_df['Experience'].isin(st.session_state.experience)]
+    is_filtered &= df['Experience'].isin(st.session_state.experience)
+filtered_df = df[is_filtered]
 
 
 # --- 9. CREATE TABBED LAYOUT ---
@@ -1754,35 +2342,56 @@ tab_board, tab_analytics, tab_resume = st.tabs(["📄 Job Board", "📊 Dashboar
 
 with tab_board:
     st.markdown(f"### 🧾 Showing {len(filtered_df)} job(s)")
+    
     display_df = filtered_df.copy()
     display_df['Skills'] = display_df['Skills_list'].apply(lambda x: ', '.join(x))
     
-    col1, col2 = st.columns([0.2, 0.8]) # Adjusted column ratio for better button spacing
+    # --- Create columns for the buttons ---
+    col1, col2 = st.columns([0.2, 0.8]) # Give more space to the right column
     
     with col1:
         csv = display_df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download as CSV", csv, "filtered_jobs.csv", "text/csv")
     
+    # --- Add the sort button and its logic ---
     with col2:
         sort_clicked = st.button("↕️ Sort by Company")
         if sort_clicked:
-            st.session_state.sort_by_company = {'none': 'asc', 'asc': 'desc', 'desc': 'none'}[st.session_state.sort_by_company]
+            # Cycle through the sort states: none -> asc -> desc -> none
+            current_state = st.session_state.sort_by_company
+            if current_state == 'none':
+                st.session_state.sort_by_company = 'asc'
+            elif current_state == 'asc':
+                st.session_state.sort_by_company = 'desc'
+            else:
+                st.session_state.sort_by_company = 'none'
 
+    # --- Apply the sort to the DataFrame based on the session state ---
     if st.session_state.sort_by_company == 'asc':
         display_df = display_df.sort_values(by='Company', ascending=True)
         st.info("Sorted by Company: A-Z")
     elif st.session_state.sort_by_company == 'desc':
         display_df = display_df.sort_values(by='Company', ascending=False)
         st.info("Sorted by Company: Z-A")
+    # If state is 'none', we do nothing and the df remains unsorted.
 
-    def make_clickable_link(link): return f'<a href="{link}" target="_blank">View</a>'
-    display_df['Link'] = display_df['Link'].apply(make_clickable_link)
     table_df = display_df.drop(columns=['Skills_list', 'Skills_str'], errors='ignore')
-    table_html = table_df.reset_index(drop=True).to_html(escape=False, index=False)
-    st.markdown(f'<div class="scrollable-table">{table_html}</div>', unsafe_allow_html=True)
-
+    
+    st.dataframe(
+        table_df,
+        height=600,
+        use_container_width=True,
+        column_config={
+            "Job Title": st.column_config.TextColumn(width="medium"),
+            "Company": st.column_config.TextColumn(width="medium"),
+            "Skills": st.column_config.TextColumn(width="large"),
+            "Link": st.column_config.LinkColumn("Job Link", display_text="View Job ↗"),
+        },
+        hide_index=True,
+    )
 
 with tab_analytics:
+  
     st.subheader("Key Metrics for Your Filtered View")
     col1, col2 = st.columns(2)
     with col1:
@@ -1792,21 +2401,22 @@ with tab_analytics:
     with col2:
         source_df = filtered_df if not filtered_df.empty else df
         title_suffix = "(in Filtered Jobs)" if not filtered_df.empty else "(Overall)"
-        skill_counts = Counter(skill for skills_list in source_df['Skills_list'] for skill in skills_list)
-        top_10_skills = skill_counts.most_common(10)
-        if top_10_skills:
-            skill_bar_df = pd.DataFrame(top_10_skills, columns=['Skills', 'Job Count'])
-            bar_chart = px.bar(skill_bar_df, x='Skills', y='Job Count', title=f'Top 10 Skills in Demand {title_suffix}')
+        source_exploded = df_exploded.loc[source_df.index]
+        skill_counts = source_exploded['Skill'].value_counts().nlargest(10)
+        if not skill_counts.empty:
+            skill_bar_df = pd.DataFrame(skill_counts).reset_index()
+            bar_chart = px.bar(skill_bar_df, x='Skill', y='count', title=f'Top 10 Skills in Demand {title_suffix}')
             st.plotly_chart(bar_chart, use_container_width=True)
         else:
             st.info("No skills data to display for the current selection.")
 
 with tab_resume:
+  
     st.subheader("🤖 AI-Powered Skill Analysis")
-
     if not SKLEARN_INSTALLED:
         st.warning("The AI Recommendation Engine is disabled because `scikit-learn` is not installed.")
-        st.info("To enable this feature, please stop the app, run `pip install scikit-learn`, and restart.")
+        st.info("To enable this feature, please stop the app, run the command below in your terminal, and then restart the app:")
+        st.code("pip install scikit-learn", language="bash")
     elif not st.session_state.get('skills'):
         st.info("Upload your resume or select skills in the sidebar to generate personalized recommendations.")
     else:
@@ -1821,47 +2431,27 @@ with tab_resume:
         skill_counts_in_top_jobs = Counter(skills_from_top_jobs)
         missing_skills = {skill for skill in skills_from_top_jobs if skill not in user_skills_set}
         ranked_missing_skills = sorted(missing_skills, key=lambda skill: skill_counts_in_top_jobs[skill], reverse=True)
-
-        st.markdown("""<div class="ai-intro">
-        Based on your resume, here is a breakdown of your current strengths and a tailored plan to enhance your profile for the job market.
-        </div>""", unsafe_allow_html=True)
-        
+        st.markdown("<div class='ai-intro'>Based on your resume, here is a breakdown of your strengths and a tailored plan to enhance your profile.</div>", unsafe_allow_html=True)
         core_skills_pills = "".join([f'<span class="skill-pill-user">{skill}</span>' for skill in st.session_state.skills])
-        rec_skills_pills = ("".join([f'<span class="skill-pill-rec">{skill.title()}</span>' for skill in ranked_missing_skills[:10]])
-                            if ranked_missing_skills 
-                            else '<span class="skill-pill-success">Excellent! You have all the top skills for jobs matching your profile.</span>')
-        
+        rec_skills_pills = ("".join([f'<span class="skill-pill-rec">{skill.title()}</span>' for skill in ranked_missing_skills[:10]]) if ranked_missing_skills else '<span class="skill-pill-success">Excellent! You have all the top skills for jobs matching your profile.</span>')
         cards_html = f"""<div class="cards-wrapper">
             <div class="skill-card-container"><h5>✅ Your Core Skills</h5><div class="pills-container">{core_skills_pills}</div></div>
-            <div class="skill-card-container"><h5>🎯 AI Recommended Skills to Learn</h5><div class="pills-container">{rec_skills_pills}</div></div>
+            <div class="skill-card-container"><h5>🎯 AI Recommended Skills</h5><div class="pills-container">{rec_skills_pills}</div></div>
         </div>"""
         st.markdown(cards_html, unsafe_allow_html=True)
-
         st.divider()
         st.markdown("<h5>✨ Top Job Titles For You</h5>", unsafe_allow_html=True)
-        st.markdown("Your skills are a strong fit for roles like these:")
         top_titles = top_jobs_df['Job Title'].unique()[:5]
         top_titles_html = "".join([f'<span class="job-title-pill">{title}</span>' for title in top_titles])
         st.markdown(f'<div class="pills-container" style="margin-top: 10px;">{top_titles_html}</div>', unsafe_allow_html=True)
 
-
-# --- 10. INJECT CSS ---
+# --- 10. INJECTING CSS ---
 st.markdown("""
     <style>
-    /* --- GENERAL STYLES --- */
-    .stDownloadButton>button { 
-        background-color: #83c9ff; 
-        color: white; 
-        border: none; 
-        border-radius: 8px; 
-        padding: 0.5em 1em; 
-    }
-    .stDownloadButton>button:hover { 
-        background-color: #0043AB; 
-        color: white; 
-    }
+    .stDownloadButton>button { background-color: #83c9ff; color: white; border: none; border-radius: 8px; padding: 0.5em 1em; }
+    .stDownloadButton>button:hover { background-color: #0043AB; color: white; }
     
-    /* --- NEW: STYLE FOR THE SORT BUTTON TO MATCH DOWNLOAD BUTTON --- */
+    /* --- NEW: CSS to style the new sort button --- */
     div[data-testid="stButton"] > button {
         background-color: #83c9ff;
         color: white;
@@ -1872,31 +2462,15 @@ st.markdown("""
     div[data-testid="stButton"] > button:hover {
         background-color: #0043AB;
         color: white;
-        border: none; /* Ensure border doesn't reappear on hover */
+        border: none;
     }
     div[data-testid="stButton"] > button:focus {
         background-color: #0043AB;
         color: white;
-        box-shadow: none; /* Optional: remove focus ring if desired */
+        box-shadow: none;
     }
-
+    
     span[data-baseweb="tag"] { background-color: #83c9ff !important; color: white !important; border-radius: 6px !important; }
-    span[data-baseweb="tag"]:hover { background-color: #0043AB !important; }
-    span[data-baseweb="tag"] svg { fill: white !important; }
-    div[data-testid="stMultiSelect"] div[data-baseweb="base-input"]:focus-within { border-color: #0043AB !important; box-shadow: 0 0 0 2px #0043AB !important; }
-    button[data-testid="stTab"][aria-selected="true"] { color: #0043AB; border-bottom: 2px solid #0043AB; }
-    button[data-testid="stTab"]:hover { color: #0043AB; }
-
-    /* --- TABLE STYLES --- */
-    .scrollable-table { max-height: 600px; overflow-y: auto; }
-    table { width : 100%; border-collapse: collapse; table-layout: fixed; }
-    th { position: sticky; top: 0; background-color: #0d1117 !important; color: white !important; text-align: left !important; padding: 12px; word-wrap: break-word; z-index: 1;}
-    td { padding: 8px 12px; border-bottom: 1px solid #ddd; word-wrap: break-word; }
-    tr:hover { background-color: #1a1a2e; }
-    th:nth-child(1), td:nth-child(1) { width: 15%; } th:nth-child(2), td:nth-child(2) { width: 15%; } th:nth-child(3), td:nth-child(3) { width: 25%; } th:nth-child(4), td:nth-child(4) { width: 10%; }
-    th:nth-child(5), td:nth-child(5) { width: 10%; } th:nth-child(6), td:nth-child(6) { width: 10%; } th:nth-child(7), td:nth-child(7) { width: 10%; } th:nth-child(8), td:nth-child(8) { width: 5%; }
-
-    /* --- AI INSIGHTS TAB STYLES --- */
     .ai-intro { font-size: 1.1em; text-align: center; color: #b0b0b0; margin-bottom: 20px; }
     .cards-wrapper { display: flex; gap: 20px; margin-top: 20px; }
     .skill-card-container { flex: 1; background-color: #0f1116; border: 1px solid #30363d; border-radius: 12px; padding: 20px; min-height: 150px; }

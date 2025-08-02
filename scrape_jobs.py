@@ -519,4 +519,5 @@ def scrape_internshala_jobs(max_pages=189): # Set a high limit; the script will 
     print(f"📁 Data saved to {output_path}")
 
 if __name__ == "__main__":
-    scrape_internshala_jobs(2)
+    scrape_internshala_jobs(189)
+
